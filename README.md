@@ -1,239 +1,133 @@
 # AISpendGuard SDK
 
-The AISpendGuard SDK lets you send **tags-only AI usage events** to AISpendGuard
-so you can:
-- track AI spend
-- attribute cost to features/routes/customers
-- detect waste (wrong model, overuse)
-- set budgets and receive alerts
+Tags-only SDK for sending AI usage events to AISpendGuard.
 
-🚫 The SDK **never sends prompt text or model outputs**.
+## What it enforces
+- No prompt/output/content fields
+- Strict event validation
+- Required tags: `task_type`, `feature`, `route`
+- API key auth via `x-api-key`
 
----
-
-## What the SDK Does
-
-The SDK:
-- wraps your AI provider calls (or runs alongside them)
-- collects **observable metadata only**
-- sends usage events to AISpendGuard’s ingestion API
-
-Collected data:
-- provider & model
-- input/output token counts
-- latency
-- cost (if known)
-- timestamp
-- developer-defined tags (intent)
-
-Not collected:
-- prompts
-- completions
-- attachments
-- tool outputs
-- PII
-
----
-
-## Supported Providers (MVP)
-
-- OpenAI (first-class)
-- Anthropic (estimated via SDK; optional)
-- Others later
-
----
-
-## Installation (Node.js / TypeScript)
-
+## Install
 ```bash
 npm install @aispendguard/sdk
+```
 
+## Quick start
+```ts
+import { init, trackUsage } from "@aispendguard/sdk";
 
-Quick Start (Minimal)
-import { trackUsage } from "@aispendguard/sdk";
+init({
+  apiKey: process.env.AISPENDGUARD_API_KEY!,
+  endpoint: "https://aispendguard.com/api/ingest",
+  defaultWorkspaceId: "ws_demo"
+});
 
 await trackUsage({
-  workspaceId: "ws_123",
   provider: "openai",
   model: "gpt-4o-mini",
-
   inputTokens: 120,
   outputTokens: 12,
   latencyMs: 840,
   costUsd: 0.0021,
-
+  timestamp: new Date(),
   tags: {
     task_type: "classify",
     feature: "lead_classifier",
     route: "POST /api/ai/classify",
-    customer_plan: "free",
-    environment: "prod"
+    environment: "prod",
+    customer_plan: "free"
+  }
+});
+```
+
+## OpenAI helper
+```ts
+import { init, trackUsage, createOpenAIUsageEvent } from "@aispendguard/sdk";
+
+init({
+  apiKey: process.env.AISPENDGUARD_API_KEY!,
+  endpoint: "https://aispendguard.com/api/ingest",
+  defaultWorkspaceId: "ws_demo"
+});
+
+const startedAt = Date.now();
+const response = await openai.responses.create({
+  model: "gpt-4o-mini",
+  input: "Classify this lead"
+});
+
+const event = createOpenAIUsageEvent({
+  workspaceId: "ws_demo",
+  model: "gpt-4o-mini",
+  usage: response.usage,
+  latencyMs: Date.now() - startedAt,
+  tags: {
+    task_type: "classify",
+    feature: "lead_classifier",
+    route: "POST /api/ai/classify"
   }
 });
 
+await trackUsage(event);
+```
 
-This sends one usage event to AISpendGuard.
+## Anthropic helper
+```ts
+import { init, trackUsage, createAnthropicUsageEvent } from "@aispendguard/sdk";
 
-Recommended Integration Pattern
-Recommended Integration Pattern
-Wrap your AI call
-const start = Date.now();
-
-const result = await openai.responses.create({
-  model: "gpt-4o-mini",
-  input: "Classify this lead..."
+init({
+  apiKey: process.env.AISPENDGUARD_API_KEY!,
+  endpoint: "https://aispendguard.com/api/ingest"
 });
 
-await trackUsage({
-  workspaceId,
-  provider: "openai",
-  model: "gpt-4o-mini",
-  inputTokens: result.usage.input_tokens,
-  outputTokens: result.usage.output_tokens,
-  latencyMs: Date.now() - start,
-  costUsd: estimateCost(result.usage, "gpt-4o-mini"),
-  tags
+const event = createAnthropicUsageEvent({
+  workspaceId: "ws_demo",
+  model: "claude-3-5-sonnet",
+  usage: {
+    input_tokens: 650,
+    output_tokens: 90
+  },
+  latencyMs: 970,
+  tags: {
+    task_type: "summarize",
+    feature: "support_summary",
+    route: "POST /api/support/summary"
+  }
 });
 
-AISpendGuard does not need to see the prompt to provide value.
+await trackUsage(event);
+```
 
-Tags (Very Important)
+## API
+- `init(config)`
+- `trackUsage(event | event[])`
+- `createOpenAIUsageEvent(params)`
+- `createAnthropicUsageEvent(params)`
+- `new AISpendGuardClient(config).trackUsage(...)`
 
-Tags give context so AISpendGuard can detect waste and give advice.
+## Config
+- `apiKey` (required)
+- `endpoint` (default: `http://localhost:3000/api/ingest`)
+- `defaultWorkspaceId` (optional fallback)
+- `timeoutMs` (default: `5000`)
+- `maxRetries` (default: `2`)
+- `strict` (default: `false`, if `true` throws on errors)
 
-Required Tags
-tags: {
-  task_type,
-  feature,
-  route,
-  environment
-}
-Recommended Tags
-tags: {
-  customer_plan,   // free | pro | enterprise
-  customer_id,     // internal ID only (no PII)
-  agent_name       // if using agents
-}
-task_type Enum (Recommended)
+## Notes
+- Non-strict mode logs and returns `{ ok: false, error }`.
+- Strict mode throws on validation/network/ingest errors.
 
-classify
+## Tests
+Run unit-style tests:
+```bash
+npm test
+```
 
-extract
-
-summarize
-
-rewrite
-
-rag
-
-chat_support
-
-code
-
-vision
-
-agent
-
-other
-
-These enable “wrong model for job” detection.
-
-Privacy & Security Guarantees
-
-The SDK enforces:
-
-❌ No prompt text
-
-❌ No output text
-
-❌ No files or attachments
-
-❌ No user PII
-
-If prompt data is detected, the SDK throws an error.
-
-Cost Handling
-If you know the cost
-
-Send costUsd.
-
-If you don’t
-
-Send token counts only. AISpendGuard will:
-
-estimate cost using model pricing
-
-clearly label it as “estimated”
-
-Error Handling
-
-SDK failures never block your AI call
-
-Usage events are best-effort
-
-Errors are logged but swallowed by default
-
-You can opt into strict mode if desired.
-
-Configuration
-configure({
-  apiKey: process.env.AISPENDGUARD_API_KEY,
-  endpoint: "https://api.aispendguard.com/ingest",
-  strict: false
-});
-Proxy Mode (Future)
-
-A future version may support:
-
-proxy/gateway mode
-
-hard spend caps
-
-enforcement
-
-This is opt-in and not required for MVP.
-
-What This SDK Is NOT
-
-Not an observability tracer
-
-Not a prompt debugger
-
-Not a model quality evaluator
-
-Not a logging system
-
-Its job is cost control, not content inspection.
-
-Contributing
-
-Do not add prompt or output fields
-
-Follow the tags spec exactly
-
-Privacy guarantees are non-negotiable
-
-License
-
-TBD
-
-
----
-
-## 📌 Strong recommendation
-Also add this file in the same repo:
-
-**`tags-spec.md`**  
-(to make privacy guarantees explicit and enforceable)
-
-You already have a version in docs — this should mirror it.
-
----
-
-If you want next, I can:
-- scaffold the **actual Node SDK code**
-- add **runtime guards** that reject prompt data
-- design a **Python SDK**
-- or write **integration examples for OpenAI & Anthropic**
-
-Just tell me what’s next.
+Run live ingest integration test (requires local app running and valid key/workspace):
+```bash
+AISPENDGUARD_API_KEY=asg_xxx \
+AISPENDGUARD_WORKSPACE_ID=ws_demo \
+AISPENDGUARD_ENDPOINT=http://localhost:3000/api/ingest \
+npm test
+```
