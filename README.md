@@ -6,6 +6,8 @@ Tags-only SDK for sending AI usage events to AISpendGuard.
 - No prompt/output/content fields
 - Strict event validation
 - Required tags: `task_type`, `feature`, `route`
+- Custom tags allowed (lowercase snake_case keys), for example: `team`, `project_code`, `region`
+- Custom tags can be either string values or array values (`string[]`)
 - API key auth via `x-api-key`
 
 ## Install
@@ -36,7 +38,9 @@ await trackUsage({
     feature: "lead_classifier",
     route: "POST /api/ai/classify",
     environment: "prod",
-    customer_plan: "free"
+    customer_plan: "free",
+    customer_defined_1: ["value1", "value2"],
+    customer_defined_2: ["service1", "service2"]
   }
 });
 ```
@@ -117,6 +121,16 @@ await trackUsage(event);
 ## Notes
 - Non-strict mode logs and returns `{ ok: false, error }`.
 - Strict mode throws on validation/network/ingest errors.
+
+## Validation Limits
+- Required tags: `task_type`, `feature`, `route` (must be non-empty strings)
+- Known optional tags: `customer_plan`, `customer_id`, `provider`, `model`, `environment`, `agent_name`
+- Custom tag keys: lowercase snake_case only, regex `^[a-z][a-z0-9_]{1,63}$`
+- Custom tag values: `string` or `string[]`
+- Max tags per event: `24`
+- Max values in a single array tag: `16`
+- Max length per string value: `120`
+- Forbidden keys (blocked): prompt/content/output/message/attachment-like fields
 
 ## Tests
 Run unit-style tests:

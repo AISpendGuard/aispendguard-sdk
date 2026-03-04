@@ -9,7 +9,8 @@ export type AllowedTagKey =
   | "environment"
   | "agent_name";
 
-export type UsageTags = Partial<Record<AllowedTagKey, string>>;
+export type TagValue = string | string[];
+export type UsageTags = Partial<Record<AllowedTagKey, string>> & Record<string, TagValue>;
 
 export type UsageEventInput = {
   eventId?: string;
@@ -36,7 +37,7 @@ export type IngestEventPayload = {
   latency_ms: number;
   cost_usd?: number;
   timestamp: string;
-  tags: Record<string, string>;
+  tags: Record<string, TagValue>;
 };
 
 export type IngestRequestPayload = {

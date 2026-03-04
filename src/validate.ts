@@ -10,6 +10,10 @@ const ALLOWED_TAGS = new Set([
   "environment",
   "agent_name"
 ]);
+const CUSTOM_TAG_KEY_PATTERN = /^[a-z][a-z0-9_]{1,63}$/;
+const MAX_TAGS_PER_EVENT = 24;
+const MAX_TAG_VALUE_LENGTH = 120;
+const MAX_TAG_ARRAY_ITEMS = 16;
 
 const FORBIDDEN_KEYS = [
   "prompt",
@@ -60,7 +64,7 @@ function normalizeTimestamp(value: string | Date): string {
   return d.toISOString();
 }
 
-function normalizeTags(tags: unknown): Record<string, string> {
+function normalizeTags(tags: unknown): Record<string, string | string[]> {
   if (!isObject(tags)) {
     throw new Error("tags must be an object");
   }
@@ -70,17 +74,58 @@ function normalizeTags(tags: unknown): Record<string, string> {
     throw new Error(`tags contains forbidden key: ${forbidden}`);
   }
 
-  const normalized: Record<string, string> = {};
+  const normalized: Record<string, string | string[]> = {};
   for (const [key, value] of Object.entries(tags)) {
-    if (!ALLOWED_TAGS.has(key)) {
-      throw new Error(`tags.${key} is not supported`);
+    const isKnown = ALLOWED_TAGS.has(key);
+    const isCustom = CUSTOM_TAG_KEY_PATTERN.test(key) && !FORBIDDEN_KEYS.includes(key as never);
+    if (!isKnown && !isCustom) {
+      throw new Error(
+        `tags.${key} is not supported (use known tags or lowercase custom keys like team, project_code)`
+      );
     }
-    assertNonEmptyString(value, `tags.${key}`);
-    normalized[key] = String(value).trim();
+    if (typeof value === "string") {
+      assertNonEmptyString(value, `tags.${key}`);
+      const normalizedValue = value.trim();
+      if (normalizedValue.length > MAX_TAG_VALUE_LENGTH) {
+        throw new Error(`tags.${key} exceeds max length ${MAX_TAG_VALUE_LENGTH}`);
+      }
+      normalized[key] = normalizedValue;
+      continue;
+    }
+
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        throw new Error(`tags.${key} array must not be empty`);
+      }
+      if (value.length > MAX_TAG_ARRAY_ITEMS) {
+        throw new Error(`tags.${key} has too many values (max ${MAX_TAG_ARRAY_ITEMS})`);
+      }
+
+      const normalizedArray = value.map((item, idx) => {
+        if (typeof item !== "string" || item.trim().length === 0) {
+          throw new Error(`tags.${key}[${idx}] must be a non-empty string`);
+        }
+        const normalizedItem = item.trim();
+        if (normalizedItem.length > MAX_TAG_VALUE_LENGTH) {
+          throw new Error(`tags.${key}[${idx}] exceeds max length ${MAX_TAG_VALUE_LENGTH}`);
+        }
+        return normalizedItem;
+      });
+
+      normalized[key] = normalizedArray;
+      continue;
+    }
+
+    throw new Error(`tags.${key} must be a string or string[]`);
+  }
+
+  if (Object.keys(normalized).length > MAX_TAGS_PER_EVENT) {
+    throw new Error(`tags has too many keys (max ${MAX_TAGS_PER_EVENT})`);
   }
 
   for (const key of REQUIRED_TAGS) {
-    if (!normalized[key]) {
+    const requiredValue = normalized[key];
+    if (typeof requiredValue !== "string" || requiredValue.length === 0) {
       throw new Error(`tags.${key} is required`);
     }
   }
