@@ -162,13 +162,33 @@ export function normalizeEvent(
     assertNonEmptyString(event.eventId, "eventId");
   }
 
+  if (event.resolvedModel !== undefined) {
+    assertNonEmptyString(event.resolvedModel, "resolvedModel");
+  }
+
+  if (event.inputTokensCached !== undefined) {
+    assertNonNegative(event.inputTokensCached, "inputTokensCached", true);
+  }
+
+  if (event.inputTokensCacheWrite !== undefined) {
+    assertNonNegative(event.inputTokensCacheWrite, "inputTokensCacheWrite", true);
+  }
+
+  if (event.thinkingTokens !== undefined) {
+    assertNonNegative(event.thinkingTokens, "thinkingTokens", true);
+  }
+
   return {
     ...(event.eventId ? { event_id: event.eventId.trim() } : {}),
     workspace_id: workspaceId!,
     provider: event.provider.trim().toLowerCase(),
     model: event.model.trim(),
+    ...(event.resolvedModel ? { resolved_model: event.resolvedModel.trim() } : {}),
     input_tokens: event.inputTokens,
     output_tokens: event.outputTokens,
+    ...(event.inputTokensCached !== undefined ? { input_tokens_cached: event.inputTokensCached } : {}),
+    ...(event.inputTokensCacheWrite !== undefined ? { input_tokens_cache_write: event.inputTokensCacheWrite } : {}),
+    ...(event.thinkingTokens !== undefined ? { thinking_tokens: event.thinkingTokens } : {}),
     latency_ms: event.latencyMs,
     ...(event.costUsd !== undefined ? { cost_usd: event.costUsd } : {}),
     timestamp: normalizeTimestamp(event.timestamp),

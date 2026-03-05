@@ -7,7 +7,7 @@ Tags-only SDK for sending AI usage events to AISpendGuard.
 - Strict event validation
 - Required tags: `task_type`, `feature`, `route`
 - Custom tags allowed (lowercase snake_case keys), for example: `team`, `project_code`, `region`
-- Custom tags can be either string values or array values (`string[]`)
+- Custom tag values can be either string values or array values (`string[]`)
 - API key auth via `x-api-key`
 
 ## Install
@@ -38,9 +38,7 @@ await trackUsage({
     feature: "lead_classifier",
     route: "POST /api/ai/classify",
     environment: "prod",
-    customer_plan: "free",
-    customer_defined_1: ["value1", "value2"],
-    customer_defined_2: ["service1", "service2"]
+    customer_plan: "free"
   }
 });
 ```
@@ -64,7 +62,8 @@ const response = await openai.responses.create({
 const event = createOpenAIUsageEvent({
   workspaceId: "ws_demo",
   model: "gpt-4o-mini",
-  usage: response.usage,
+  resolvedModel: response.model,       // "gpt-4o-mini-2024-07-18" — pinned version
+  usage: response.usage,               // auto-extracts tokens, cache hits, reasoning tokens
   latencyMs: Date.now() - startedAt,
   tags: {
     task_type: "classify",
@@ -85,14 +84,19 @@ init({
   endpoint: "https://aispendguard.com/api/ingest"
 });
 
+const startedAt = Date.now();
+const message = await anthropic.messages.create({
+  model: "claude-3-5-sonnet-latest",
+  max_tokens: 200,
+  messages: [{ role: "user", content: "Summarize this thread." }]
+});
+
 const event = createAnthropicUsageEvent({
   workspaceId: "ws_demo",
-  model: "claude-3-5-sonnet",
-  usage: {
-    input_tokens: 650,
-    output_tokens: 90
-  },
-  latencyMs: 970,
+  model: "claude-3-5-sonnet-latest",
+  resolvedModel: message.model,        // "claude-3-5-sonnet-20241022" — pinned version
+  usage: message.usage,                // auto-extracts tokens, cache_read, cache_creation
+  latencyMs: Date.now() - startedAt,
   tags: {
     task_type: "summarize",
     feature: "support_summary",
@@ -103,11 +107,43 @@ const event = createAnthropicUsageEvent({
 await trackUsage(event);
 ```
 
+## Gemini helper
+```ts
+import { init, trackUsage, createGeminiUsageEvent } from "@aispendguard/sdk";
+
+init({
+  apiKey: process.env.AISPENDGUARD_API_KEY!,
+  endpoint: "https://aispendguard.com/api/ingest"
+});
+
+const startedAt = Date.now();
+const response = await gemini.models.generateContent({
+  model: "gemini-2.0-flash",
+  contents: [{ role: "user", parts: [{ text: "Translate this to French." }] }]
+});
+
+const event = createGeminiUsageEvent({
+  workspaceId: "ws_demo",
+  model: "gemini-2.0-flash",
+  resolvedModel: response.modelVersion, // "gemini-2.0-flash-001" — pinned version
+  usage: response.usageMetadata,        // auto-extracts tokens, cachedContent, thoughts
+  latencyMs: Date.now() - startedAt,
+  tags: {
+    task_type: "translate",
+    feature: "ui_i18n",
+    route: "POST /api/translate"
+  }
+});
+
+await trackUsage(event);
+```
+
 ## API
 - `init(config)`
 - `trackUsage(event | event[])`
-- `createOpenAIUsageEvent(params)`
-- `createAnthropicUsageEvent(params)`
+- `createOpenAIUsageEvent(params)` — OpenAI Chat Completions + Responses API
+- `createAnthropicUsageEvent(params)` — Anthropic Messages API
+- `createGeminiUsageEvent(params)` — Google Gemini generateContent API
 - `new AISpendGuardClient(config).trackUsage(...)`
 
 ## Config
@@ -131,6 +167,80 @@ await trackUsage(event);
 - Max values in a single array tag: `16`
 - Max length per string value: `120`
 - Forbidden keys (blocked): prompt/content/output/message/attachment-like fields
+
+## Extended token fields (optional)
+
+These optional fields give AISpendGuard the data it needs for accurate cost calculation and cost-spike detection. The provider helpers extract them automatically from `response.usage`.
+
+| Field | Type | What it is | Provider |
+|-------|------|-----------|----------|
+| `resolvedModel` | `string` | Pinned model version from response (e.g. `gpt-4o-mini-2024-07-18`) | All |
+| `inputTokensCached` | `number` | Cache read tokens — already in `inputTokens`, billed cheaper | OpenAI (0.5×) · Anthropic (0.1×) · Gemini |
+| `inputTokensCacheWrite` | `number` | Cache write tokens — already in `inputTokens`, billed at premium | Anthropic only (1.25×) |
+| `thinkingTokens` | `number` | Reasoning/thinking tokens — already in `outputTokens`, billed at full output rate | OpenAI o1/o3 · Gemini 2.5 |
+
+> **Anthropic note:** Extended thinking tokens (`claude-3-7-sonnet` with `thinking: enabled`) are
+> included in `output_tokens` but NOT separately reported in the `usage` object. You can count
+> `content` blocks of type `"thinking"` manually if you need the split.
+
+### Why these matter
+
+Without them, cost calculations are inaccurate:
+- **Cache read tokens** cost 10–50% of normal — without tracking, you overstate spend on cached calls.
+- **Cache write tokens** (Anthropic) cost 25% more — without tracking, you understate spend when building cache.
+- **Thinking tokens** for o1/o3 can be 3–10× the visible output — without tracking, cost spikes are invisible.
+- **Resolved model** lets AISpendGuard detect silent provider upgrades between versions.
+
+### Manual override (no helper)
+
+If you aren't using a helper, pass them directly in `trackUsage`:
+```ts
+await trackUsage({
+  provider: "openai",
+  model: "gpt-4o-mini",
+  resolvedModel: response.model,
+  inputTokens: 1000,
+  outputTokens: 50,
+  inputTokensCached: 800,      // 800 of the 1000 input tokens were cache hits
+  thinkingTokens: 0,
+  latencyMs: 320,
+  timestamp: new Date(),
+  tags: { task_type: "classify", feature: "router", route: "POST /api/route" }
+});
+```
+
+## task_type values
+
+Pick the value that describes what the model is being asked to **produce**.
+The right `task_type` is what enables AISpendGuard's waste detection rules.
+
+| Value | What it does | Output size | Best model tier |
+|-------|-------------|-------------|-----------------|
+| `answer` | Q&A, RAG responses, knowledge retrieval | 100–800 tok | standard |
+| `classify` | Label, categorize, detect intent | **1–10 tok** | **micro** |
+| `extract` | Pull structured fields from text | 50–300 tok | micro |
+| `summarize` | Condense long content, TLDR | 100–500 tok | standard |
+| `generate` | Write/draft new content | 300–2000 tok | standard |
+| `rewrite` | Paraphrase, tone-adjust, edit | ≈ input | standard |
+| `translate` | Language translation | ≈ input | micro |
+| `code` | Generate, review, explain code | 200–1500 tok | premium |
+| `eval` | LLM-as-judge, quality score | **10–50 tok** | **micro** |
+| `embed` | Text embedding / vector | fixed vector | embedding models |
+| `route` | Decide which tool/path/agent | **1–20 tok** | **micro** |
+| `plan` | Decompose tasks, strategy | 100–500 tok | premium |
+| `agent_step` | Single step in agent loop | 50–800 tok | varies |
+| `vision` | Image/PDF/screenshot understanding | 100–600 tok | standard |
+| `chat` | Multi-turn stateful conversation | 100–500 tok | standard |
+| `other` | None of the above (avoid — disables waste detection) | — | — |
+
+**Model tiers:**
+- `micro` — haiku / gpt-4o-mini / flash-lite (80–95% cheaper than premium for short-output tasks)
+- `standard` — sonnet / gpt-4o / flash (best quality/cost balance for most workloads)
+- `premium` — opus / o1 / o3 / gpt-4-turbo (complex reasoning, nuanced code, planning)
+- `embedding` — text-embedding-3-small / embed-english-v3 (never use chat models for embeddings)
+
+**Waste rule:** if `classify`, `route`, or `eval` uses a `premium` model with avg output < 100 tokens,
+AISpendGuard will flag this and calculate the exact monthly saving from switching to `micro` tier.
 
 ## Tests
 Run unit-style tests:

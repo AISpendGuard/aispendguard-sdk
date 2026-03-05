@@ -22,12 +22,10 @@ export async function trackUsage(events: UsageEventBatchInput): Promise<TrackRes
 export { AISpendGuardClient };
 export { createOpenAIUsageEvent } from "./openai";
 export { createAnthropicUsageEvent } from "./anthropic";
-export type {
-  AnthropicEventParams
-} from "./anthropic";
-export type {
-  OpenAIEventParams
-} from "./openai";
+export { createGeminiUsageEvent } from "./gemini";
+export type { AnthropicEventParams } from "./anthropic";
+export type { OpenAIEventParams } from "./openai";
+export type { GeminiEventParams } from "./gemini";
 export type {
   AllowedTagKey,
   ClientConfig,
