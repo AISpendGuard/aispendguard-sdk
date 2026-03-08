@@ -37,6 +37,16 @@ export type AnthropicEventParams = {
   costUsd?: number;
   tags: UsageTags;
   eventId?: string;
+  /** Cache write TTL: "5m" (default, 1.25× input) or "1h" (extended, 1.5× input). */
+  cacheTtl?: "5m" | "1h";
+  /** Number of web search tool calls in this request. */
+  webSearchCount?: number;
+  /** Number of web fetch tool calls in this request. */
+  webFetchCount?: number;
+  /** Whether this request used the Batch API (50% discount). */
+  isBatchApi?: boolean;
+  /** Whether fast mode was used (6× multiplier). */
+  isFastMode?: boolean;
 };
 
 export function createAnthropicUsageEvent(params: AnthropicEventParams): UsageEventInput {
@@ -53,6 +63,11 @@ export function createAnthropicUsageEvent(params: AnthropicEventParams): UsageEv
     outputTokens: usage?.output_tokens ?? 0,
     ...(typeof cacheRead === "number" ? { inputTokensCached: cacheRead } : {}),
     ...(typeof cacheWrite === "number" ? { inputTokensCacheWrite: cacheWrite } : {}),
+    ...(params.cacheTtl ? { cacheTtl: params.cacheTtl } : {}),
+    ...(typeof params.webSearchCount === "number" ? { webSearchCount: params.webSearchCount } : {}),
+    ...(typeof params.webFetchCount === "number" ? { webFetchCount: params.webFetchCount } : {}),
+    ...(params.isBatchApi ? { isBatchApi: true } : {}),
+    ...(params.isFastMode ? { isFastMode: true } : {}),
     latencyMs: params.latencyMs,
     costUsd: params.costUsd,
     timestamp: params.timestamp ?? new Date(),

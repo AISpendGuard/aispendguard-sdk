@@ -40,6 +40,19 @@ export type UsageEventInput = {
    * Already included in outputTokens; stored separately for cost spike detection.
    */
   thinkingTokens?: number;
+  /**
+   * Anthropic cache write TTL: "5m" (default, 1.25× input price) or "1h" (extended, 1.5× input price).
+   * Only relevant when inputTokensCacheWrite > 0.
+   */
+  cacheTtl?: "5m" | "1h";
+  /** Number of web search tool calls (billed as flat fee per call). */
+  webSearchCount?: number;
+  /** Number of web fetch tool calls (billed as flat fee per call). */
+  webFetchCount?: number;
+  /** Whether this request used the Batch API (50% discount on token costs). */
+  isBatchApi?: boolean;
+  /** Whether fast mode was used (Opus 6× multiplier on token costs). */
+  isFastMode?: boolean;
   latencyMs: number;
   costUsd?: number;
   timestamp: string | Date;
@@ -59,6 +72,11 @@ export type IngestEventPayload = {
   input_tokens_cached?: number;
   input_tokens_cache_write?: number;
   thinking_tokens?: number;
+  cache_ttl?: "5m" | "1h";
+  web_search_count?: number;
+  web_fetch_count?: number;
+  is_batch_api?: boolean;
+  is_fast_mode?: boolean;
   latency_ms: number;
   cost_usd?: number;
   timestamp: string;

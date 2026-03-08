@@ -178,6 +178,26 @@ export function normalizeEvent(
     assertNonNegative(event.thinkingTokens, "thinkingTokens", true);
   }
 
+  if (event.cacheTtl !== undefined && event.cacheTtl !== "5m" && event.cacheTtl !== "1h") {
+    throw new Error("cacheTtl must be \"5m\" or \"1h\"");
+  }
+
+  if (event.webSearchCount !== undefined) {
+    assertNonNegative(event.webSearchCount, "webSearchCount", true);
+  }
+
+  if (event.webFetchCount !== undefined) {
+    assertNonNegative(event.webFetchCount, "webFetchCount", true);
+  }
+
+  if (event.isBatchApi !== undefined && typeof event.isBatchApi !== "boolean") {
+    throw new Error("isBatchApi must be a boolean");
+  }
+
+  if (event.isFastMode !== undefined && typeof event.isFastMode !== "boolean") {
+    throw new Error("isFastMode must be a boolean");
+  }
+
   return {
     ...(event.eventId ? { event_id: event.eventId.trim() } : {}),
     workspace_id: workspaceId!,
@@ -189,6 +209,11 @@ export function normalizeEvent(
     ...(event.inputTokensCached !== undefined ? { input_tokens_cached: event.inputTokensCached } : {}),
     ...(event.inputTokensCacheWrite !== undefined ? { input_tokens_cache_write: event.inputTokensCacheWrite } : {}),
     ...(event.thinkingTokens !== undefined ? { thinking_tokens: event.thinkingTokens } : {}),
+    ...(event.cacheTtl ? { cache_ttl: event.cacheTtl } : {}),
+    ...(event.webSearchCount !== undefined ? { web_search_count: event.webSearchCount } : {}),
+    ...(event.webFetchCount !== undefined ? { web_fetch_count: event.webFetchCount } : {}),
+    ...(event.isBatchApi ? { is_batch_api: true } : {}),
+    ...(event.isFastMode ? { is_fast_mode: true } : {}),
     latency_ms: event.latencyMs,
     ...(event.costUsd !== undefined ? { cost_usd: event.costUsd } : {}),
     timestamp: normalizeTimestamp(event.timestamp),
