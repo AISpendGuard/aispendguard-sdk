@@ -133,6 +133,63 @@ const event = createGeminiUsageEvent({
 await trackUsage(event);
 ```
 
+## Streaming Responses
+
+With streaming, usage data arrives in the **final chunk**. Accumulate the stream, then track:
+
+### OpenAI Streaming
+```ts
+const startedAt = Date.now();
+const stream = await openai.chat.completions.create({
+  model: "gpt-4o-mini",
+  messages: [{ role: "user", content: "Hello" }],
+  stream: true,
+  stream_options: { include_usage: true }, // required for usage in stream
+});
+
+let usage;
+for await (const chunk of stream) {
+  if (chunk.usage) usage = chunk.usage;
+  // ... process chunk.choices[0]?.delta
+}
+
+if (usage) {
+  const event = createOpenAIUsageEvent({
+    model: "gpt-4o-mini",
+    usage,
+    latencyMs: Date.now() - startedAt,
+    tags: { task_type: "chat", feature: "assistant", route: "POST /api/chat" },
+  });
+  await trackUsage(event);
+}
+```
+
+### Anthropic Streaming
+```ts
+const startedAt = Date.now();
+const stream = anthropic.messages.stream({
+  model: "claude-sonnet-4-20250514",
+  messages: [{ role: "user", content: "Hello" }],
+  max_tokens: 200,
+});
+
+for await (const event of stream) {
+  // ... process text events
+}
+
+const message = await stream.finalMessage();
+
+const event = createAnthropicUsageEvent({
+  model: "claude-sonnet-4-20250514",
+  usage: message.usage,
+  latencyMs: Date.now() - startedAt,
+  tags: { task_type: "chat", feature: "assistant", route: "POST /api/chat" },
+});
+await trackUsage(event);
+```
+
+> **Key point:** OpenAI requires `stream_options: { include_usage: true }` — without it, usage is `null` in the stream. Anthropic provides usage on the final message automatically.
+
 ## API
 - `init(config)`
 - `trackUsage(event | event[])`
