@@ -57,7 +57,7 @@ export class AISpendGuardClient {
       if (this.strict) {
         throw error;
       }
-      this.logger.warn(`[aispendguard-sdk] ${message}`);
+      this.logger.warn(`[aispendguard-sdk] tracking failed: ${message}. Use { strict: true } to throw on errors.`);
       return { ok: false, error: message };
     }
   }
@@ -98,10 +98,16 @@ export class AISpendGuardClient {
         signal: controller.signal
       });
 
+      if (response.redirected) {
+        throw new Error(
+          `ingest failed: redirected to ${response.url} — update your endpoint to "${response.url}"`
+        );
+      }
+
       const raw = (await response.json().catch(() => null)) as IngestResponse | null;
       if (!response.ok) {
-        const msg = raw?.errors?.join("; ") || `HTTP ${response.status}`;
-        throw new Error(`ingest failed: ${msg}`);
+        const msg = raw?.errors?.join("; ") || `HTTP ${response.status} ${response.statusText}`;
+        throw new Error(`ingest failed (${this.endpoint}): ${msg}`);
       }
 
       if (!raw) {
@@ -109,6 +115,14 @@ export class AISpendGuardClient {
       }
 
       return raw;
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        throw new Error(`ingest failed: request to ${this.endpoint} timed out after ${this.timeoutMs}ms`);
+      }
+      if (err instanceof TypeError) {
+        throw new Error(`ingest failed: network error reaching ${this.endpoint} — ${err.message}`);
+      }
+      throw err;
     } finally {
       clearTimeout(timeout);
     }
