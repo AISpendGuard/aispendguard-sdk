@@ -22,5 +22,16 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: |
-          npm config set registry https://registry.npmjs.org/
-          npm publish --provenance --access public
+          echo "Node version:"
+          node --version
+          echo "npm version:"
+          npm --version
+          echo "npmrc contents:"
+          cat ~/.npmrc 2>/dev/null || echo "no .npmrc"
+          cat .npmrc 2>/dev/null || echo "no local .npmrc"
+          echo "npm whoami:"
+          npm whoami 2>&1 || echo "not logged in"
+          echo "npm config list:"
+          npm config list
+          echo "---"
+          npm publish --provenance --access public 2>&1
