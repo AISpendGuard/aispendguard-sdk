@@ -7,7 +7,9 @@ export type AllowedTagKey =
   | "provider"
   | "model"
   | "environment"
-  | "agent_name";
+  | "agent_name"
+  | "trace_id"
+  | "parent_id";
 
 export type TagValue = string | string[];
 export type UsageTags = Partial<Record<AllowedTagKey, string>> & Record<string, TagValue>;
