@@ -54,6 +54,8 @@ export type UsageEventInput = {
   isBatchApi?: boolean;
   /** Whether fast mode was used (Opus 6× multiplier on token costs). */
   isFastMode?: boolean;
+  /** Trace identifier for grouping multi-step agent executions. */
+  traceId?: string;
   latencyMs: number;
   costUsd?: number;
   timestamp: string | Date;
@@ -77,6 +79,7 @@ export type IngestEventPayload = {
   web_fetch_count?: number;
   is_batch_api?: boolean;
   is_fast_mode?: boolean;
+  trace_id?: string;
   latency_ms: number;
   cost_usd?: number;
   timestamp: string;
