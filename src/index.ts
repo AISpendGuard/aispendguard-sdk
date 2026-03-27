@@ -33,6 +33,7 @@ export type { OpenAIEventParams } from "./openai";
 export type { GeminiEventParams } from "./gemini";
 export type {
   AllowedTagKey,
+  BudgetExceededInfo,
   ClientConfig,
   IngestEventPayload,
   IngestRequestPayload,

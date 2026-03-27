@@ -1,4 +1,5 @@
 import type {
+  BudgetExceededInfo,
   ClientConfig,
   IngestRequestPayload,
   IngestResponse,
@@ -16,6 +17,13 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+class BudgetExceededError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BudgetExceededError";
+  }
+}
+
 export class AISpendGuardClient {
   private readonly apiKey: string;
   private readonly endpoint: string;
@@ -24,6 +32,13 @@ export class AISpendGuardClient {
   private readonly strict: boolean;
   readonly defaultTags?: UsageTags;
   private readonly logger: Pick<Console, "warn" | "error" | "info">;
+
+  // Circuit breaker state for budget enforcement
+  private budgetExceeded = false;
+  private budgetExceededUntil = 0;
+  private budgetExceededLogged = false;
+  private readonly budgetBackoffMs: number;
+  private readonly onBudgetExceeded?: (info: BudgetExceededInfo) => void;
 
   constructor(config: ClientConfig) {
     if (!config.apiKey || config.apiKey.trim().length === 0) {
@@ -37,9 +52,21 @@ export class AISpendGuardClient {
     this.strict = config.strict ?? false;
     this.defaultTags = config.defaultTags;
     this.logger = config.logger ?? console;
+    this.budgetBackoffMs = config.budgetBackoffMs ?? 300_000; // 5 min
+    this.onBudgetExceeded = config.onBudgetExceeded;
   }
 
   async trackUsage(events: UsageEventBatchInput): Promise<TrackResult> {
+    // Circuit breaker: silently drop events while budget exceeded
+    if (this.budgetExceeded) {
+      if (Date.now() < this.budgetExceededUntil) {
+        return { ok: false, error: "budget exceeded (circuit breaker)" };
+      }
+      // Backoff expired — send probe to check if budget was increased
+      this.budgetExceeded = false;
+      this.budgetExceededLogged = false;
+    }
+
     try {
       const list = Array.isArray(events) ? events : [events];
       if (list.length === 0) {
@@ -70,6 +97,10 @@ export class AISpendGuardClient {
       try {
         return await this.send(payload);
       } catch (error) {
+        // Don't retry on budget exceeded — skip straight to circuit breaker
+        if (error instanceof BudgetExceededError) {
+          throw error;
+        }
         lastError = error;
         if (attempt === this.maxRetries) {
           break;
@@ -104,6 +135,32 @@ export class AISpendGuardClient {
         );
       }
 
+      // Budget enforcement: detect 429 + X-Budget-Exceeded header
+      if (response.status === 429 && response.headers.get("x-budget-exceeded") === "true") {
+        const limitUsd = parseFloat(response.headers.get("x-budget-limit") ?? "0");
+        const currentSpendUsd = parseFloat(response.headers.get("x-budget-current") ?? "0");
+
+        this.budgetExceeded = true;
+        this.budgetExceededUntil = Date.now() + this.budgetBackoffMs;
+
+        if (!this.budgetExceededLogged) {
+          this.budgetExceededLogged = true;
+          this.logger.warn(
+            `[aispendguard-sdk] budget exceeded: spend $${currentSpendUsd.toFixed(2)} >= limit $${limitUsd.toFixed(2)}. ` +
+            `Pausing event sending for ${Math.round(this.budgetBackoffMs / 1000)}s.`
+          );
+          this.onBudgetExceeded?.({
+            limitUsd,
+            currentSpendUsd,
+            retryAfterMs: this.budgetBackoffMs,
+          });
+        }
+
+        throw new BudgetExceededError(
+          `budget exceeded: spend $${currentSpendUsd.toFixed(2)} >= limit $${limitUsd.toFixed(2)}`
+        );
+      }
+
       const raw = (await response.json().catch(() => null)) as IngestResponse | null;
       if (!response.ok) {
         const msg = raw?.errors?.join("; ") || `HTTP ${response.status} ${response.statusText}`;
@@ -116,6 +173,9 @@ export class AISpendGuardClient {
 
       return raw;
     } catch (err) {
+      if (err instanceof BudgetExceededError) {
+        throw err;
+      }
       if (err instanceof Error && err.name === "AbortError") {
         throw new Error(`ingest failed: request to ${this.endpoint} timed out after ${this.timeoutMs}ms`);
       }
