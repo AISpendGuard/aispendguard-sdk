@@ -216,6 +216,7 @@ export function normalizeEvent(
     ...(event.webFetchCount !== undefined ? { web_fetch_count: event.webFetchCount } : {}),
     ...(event.isBatchApi ? { is_batch_api: true } : {}),
     ...(event.isFastMode ? { is_fast_mode: true } : {}),
+    ...(event.traceId ? { trace_id: event.traceId } : {}),
     latency_ms: event.latencyMs,
     ...(event.costUsd !== undefined ? { cost_usd: event.costUsd } : {}),
     timestamp: normalizeTimestamp(event.timestamp),
