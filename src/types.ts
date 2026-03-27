@@ -94,6 +94,12 @@ export type IngestResponse = {
   errors?: string[];
 };
 
+export type BudgetExceededInfo = {
+  limitUsd: number;
+  currentSpendUsd: number;
+  retryAfterMs: number;
+};
+
 export type ClientConfig = {
   apiKey: string;
   endpoint?: string;
@@ -103,6 +109,10 @@ export type ClientConfig = {
   maxRetries?: number;
   strict?: boolean;
   logger?: Pick<Console, "warn" | "error" | "info">;
+  /** Called once when the API reports budget exceeded (429 + X-Budget-Exceeded header). */
+  onBudgetExceeded?: (info: BudgetExceededInfo) => void;
+  /** How long to pause sending after budget exceeded (ms). Default: 300000 (5 min). */
+  budgetBackoffMs?: number;
 };
 
 export type TrackResult =
