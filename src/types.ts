@@ -121,3 +121,6 @@ export type ClientConfig = {
 export type TrackResult =
   | { ok: true; response: IngestResponse }
   | { ok: false; error: string };
+
+export type { SessionBudgetConfig, SessionBudgetInfo, LoopDetectionConfig } from "./session-budget";
+export type { PriceEntry } from "./pricing";

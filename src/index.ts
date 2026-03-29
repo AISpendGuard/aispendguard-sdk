@@ -20,6 +20,8 @@ export async function trackUsage(events: UsageEventBatchInput): Promise<TrackRes
 }
 
 export { AISpendGuardClient };
+export { SessionBudget } from "./session-budget";
+export { estimateEventCost } from "./pricing";
 export { createOpenAIUsageEvent } from "./openai";
 export { createAnthropicUsageEvent } from "./anthropic";
 export { createGeminiUsageEvent } from "./gemini";
@@ -41,5 +43,9 @@ export type {
   TrackResult,
   UsageEventBatchInput,
   UsageEventInput,
-  UsageTags
+  UsageTags,
+  SessionBudgetConfig,
+  SessionBudgetInfo,
+  LoopDetectionConfig,
+  PriceEntry
 } from "./types";
