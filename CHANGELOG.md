@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-03-30
+
+### Added
+- SessionBudget class with client-side spend caps and loop detection
+- Budget enforcement circuit breaker in client
+- Built-in pricing engine for cost estimation
+- `traceId` parameter in SDK types and validation
+- `trace_id` and `parent_id` tag support for distributed tracing
+
 ## [0.1.2] - 2026-03-15
 
 ### Added
