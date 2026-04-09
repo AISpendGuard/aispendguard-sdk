@@ -90,11 +90,45 @@ export type IngestRequestPayload = {
   events: IngestEventPayload[];
 };
 
+export type EnforcementAction = "warn" | "block" | "downgrade" | "throttle";
+
+export type EnforcementSignal = {
+  action: EnforcementAction;
+  reason: string;
+  budget_limit?: number;
+  current_spend?: number;
+  current_percent?: number;
+  suggested_model?: string;
+  backoff_ms?: number;
+  source?: "workspace" | "tag";
+  tag_key?: string;
+  tag_value?: string;
+};
+
 export type IngestResponse = {
   accepted: number;
   duplicates: number;
   rejected: number;
   errors?: string[];
+  enforcement?: EnforcementSignal;
+};
+
+export type CheckBudgetOptions = {
+  estimatedCost?: number;
+};
+
+export type CheckBudgetResult = {
+  hasBudget: boolean;
+  monthlyLimitUsd: number | null;
+  currentSpendUsd: number | null;
+  percentUsed: number | null;
+  enforceLimit: boolean;
+  exceeded: boolean;
+  wouldExceed?: boolean;
+  triggeredRule?: {
+    thresholdPercent: number;
+    action: string;
+  } | null;
 };
 
 export type BudgetExceededInfo = {

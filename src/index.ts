@@ -1,5 +1,5 @@
 import { AISpendGuardClient } from "./client";
-import type { ClientConfig, TrackResult, UsageEventBatchInput } from "./types";
+import type { CheckBudgetOptions, CheckBudgetResult, ClientConfig, TrackResult, UsageEventBatchInput } from "./types";
 
 let defaultClient: AISpendGuardClient | null = null;
 
@@ -17,6 +17,10 @@ export function getClient(): AISpendGuardClient {
 
 export async function trackUsage(events: UsageEventBatchInput): Promise<TrackResult> {
   return getClient().trackUsage(events);
+}
+
+export async function checkBudget(options?: CheckBudgetOptions): Promise<CheckBudgetResult> {
+  return getClient().checkBudget(options);
 }
 
 export { AISpendGuardClient };
@@ -47,5 +51,9 @@ export type {
   SessionBudgetConfig,
   SessionBudgetInfo,
   LoopDetectionConfig,
-  PriceEntry
+  PriceEntry,
+  CheckBudgetOptions,
+  CheckBudgetResult,
+  EnforcementAction,
+  EnforcementSignal
 } from "./types";
