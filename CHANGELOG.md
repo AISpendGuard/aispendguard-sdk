@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-04-09
+
+### Added
+- `checkBudget()` method for pre-request budget checks
+- Enforcement body parsing for budget-exceeded responses
+
 ## [0.2.0] - 2026-03-30
 
 ### Added

@@ -1,6 +1,6 @@
 {
   "name": "@aispendguard/sdk",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Tags-only SDK for tracking AI API spend with AISpendGuard. Supports OpenAI, Anthropic, Google Gemini, LangChain.js, and OpenTelemetry.",
   "license": "MIT",
   "main": "dist/index.js",
