@@ -1,5 +1,7 @@
 import type {
   BudgetExceededInfo,
+  CheckBudgetOptions,
+  CheckBudgetResult,
   ClientConfig,
   IngestRequestPayload,
   IngestResponse,
@@ -54,6 +56,91 @@ export class AISpendGuardClient {
     this.logger = config.logger ?? console;
     this.budgetBackoffMs = config.budgetBackoffMs ?? 300_000; // 5 min
     this.onBudgetExceeded = config.onBudgetExceeded;
+  }
+
+  /** Derive the budget endpoint from the ingest endpoint base URL. */
+  private get budgetEndpoint(): string {
+    // Endpoint is typically "https://www.aispendguard.com/api/ingest"
+    // Budget endpoint is "https://www.aispendguard.com/api/v1/budget"
+    try {
+      const url = new URL(this.endpoint);
+      url.pathname = url.pathname.replace(/\/api\/ingest\/?$/, "/api/v1/budget");
+      return url.toString();
+    } catch {
+      // Fallback: strip /api/ingest and append /api/v1/budget
+      return this.endpoint.replace(/\/api\/ingest\/?$/, "/api/v1/budget");
+    }
+  }
+
+  /**
+   * Check current budget status before making an AI API call.
+   * Returns budget state including whether an estimated cost would exceed limits.
+   */
+  async checkBudget(options?: CheckBudgetOptions): Promise<CheckBudgetResult> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    try {
+      let url = this.budgetEndpoint;
+      if (options?.estimatedCost != null) {
+        const cost = options.estimatedCost;
+        if (!Number.isFinite(cost) || cost < 0) {
+          throw new Error("estimatedCost must be a finite non-negative number");
+        }
+        url += `?estimatedCost=${cost}`;
+      }
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: { "x-api-key": this.apiKey },
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`budget check failed: HTTP ${response.status}`);
+      }
+
+      const data = await response.json() as {
+        budget: {
+          monthlyLimitUsd: number;
+          currentSpendUsd: number;
+          percentUsed: number;
+          enforceLimit: boolean;
+          exceeded: boolean;
+          wouldExceed?: boolean;
+          triggeredRule?: { thresholdPercent: number; action: string } | null;
+        } | null;
+      };
+
+      if (!data.budget) {
+        return {
+          hasBudget: false,
+          monthlyLimitUsd: null,
+          currentSpendUsd: null,
+          percentUsed: null,
+          enforceLimit: false,
+          exceeded: false,
+        };
+      }
+
+      return {
+        hasBudget: true,
+        monthlyLimitUsd: data.budget.monthlyLimitUsd,
+        currentSpendUsd: data.budget.currentSpendUsd,
+        percentUsed: data.budget.percentUsed,
+        enforceLimit: data.budget.enforceLimit,
+        exceeded: data.budget.exceeded,
+        wouldExceed: data.budget.wouldExceed,
+        triggeredRule: data.budget.triggeredRule,
+      };
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        throw new Error(`budget check timed out after ${this.timeoutMs}ms`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   async trackUsage(events: UsageEventBatchInput): Promise<TrackResult> {
@@ -169,6 +256,28 @@ export class AISpendGuardClient {
 
       if (!raw) {
         throw new Error("ingest failed: empty response body");
+      }
+
+      // Enforcement body parsing: activate circuit breaker on block action
+      if (raw.enforcement?.action === "block") {
+        const limitUsd = raw.enforcement.budget_limit ?? 0;
+        const currentSpendUsd = raw.enforcement.current_spend ?? 0;
+
+        this.budgetExceeded = true;
+        this.budgetExceededUntil = Date.now() + this.budgetBackoffMs;
+
+        if (!this.budgetExceededLogged) {
+          this.budgetExceededLogged = true;
+          this.logger.warn(
+            `[aispendguard-sdk] budget enforcement: action=block spend=$${currentSpendUsd.toFixed(2)} limit=$${limitUsd.toFixed(2)}. ` +
+            `Pausing event sending for ${Math.round(this.budgetBackoffMs / 1000)}s.`
+          );
+          this.onBudgetExceeded?.({
+            limitUsd,
+            currentSpendUsd,
+            retryAfterMs: this.budgetBackoffMs,
+          });
+        }
       }
 
       return raw;
