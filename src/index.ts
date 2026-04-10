@@ -33,6 +33,7 @@ export { AISpendGuardCallbackHandler } from "./langchain";
 export { wrapOpenAI } from "./wrap-openai";
 export { wrapAnthropic } from "./wrap-anthropic";
 export { wrapGemini } from "./wrap-gemini";
+export { createAISDKOnFinish, createVercelAIUsageEvent } from "./vercel-ai";
 export type { LangChainHandlerConfig } from "./langchain";
 export type { AnthropicEventParams } from "./anthropic";
 export type { OpenAIEventParams } from "./openai";
@@ -55,5 +56,7 @@ export type {
   CheckBudgetOptions,
   CheckBudgetResult,
   EnforcementAction,
-  EnforcementSignal
+  EnforcementSignal,
+  VercelAIOnFinishResult,
+  VercelAIConfig
 } from "./types";

@@ -156,5 +156,26 @@ export type TrackResult =
   | { ok: true; response: IngestResponse }
   | { ok: false; error: string };
 
+/** Subset of Vercel AI SDK onFinish result — only the fields we read (privacy-safe). */
+export type VercelAIOnFinishResult = {
+  usage: { promptTokens: number; completionTokens: number };
+  response: {
+    modelId?: string;
+    timestamp?: Date;
+    headers?: Record<string, string>;
+  };
+  finishReason?: string;
+  // text?: string;        // NEVER READ — privacy invariant
+  // toolCalls?: unknown;  // NEVER READ
+  // toolResults?: unknown; // NEVER READ
+};
+
+export type VercelAIConfig = {
+  /** Additional tags to merge into every event. */
+  defaultTags?: Record<string, string>;
+  /** Override provider detection. If not set, auto-detected from modelId. */
+  provider?: string;
+};
+
 export type { SessionBudgetConfig, SessionBudgetInfo, LoopDetectionConfig } from "./session-budget";
 export type { PriceEntry } from "./pricing";
