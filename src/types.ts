@@ -9,7 +9,8 @@ export type AllowedTagKey =
   | "environment"
   | "agent_name"
   | "trace_id"
-  | "parent_id";
+  | "parent_id"
+  | "session_id";
 
 export type TagValue = string | string[];
 export type UsageTags = Partial<Record<AllowedTagKey, string>> & Record<string, TagValue>;
@@ -155,6 +156,13 @@ export type ClientConfig = {
 export type TrackResult =
   | { ok: true; response: IngestResponse }
   | { ok: false; error: string };
+
+import type { SessionBudgetConfig as _SessionBudgetConfig } from "./session-budget";
+
+export type CreateSessionConfig = _SessionBudgetConfig & {
+  /** Session ID. Auto-generated if omitted (sess_<12-char-random>). Max 120 chars. */
+  sessionId?: string;
+};
 
 export type { SessionBudgetConfig, SessionBudgetInfo, LoopDetectionConfig } from "./session-budget";
 export type { PriceEntry } from "./pricing";

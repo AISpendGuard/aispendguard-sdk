@@ -1,5 +1,7 @@
 import { AISpendGuardClient } from "./client";
-import type { CheckBudgetOptions, CheckBudgetResult, ClientConfig, TrackResult, UsageEventBatchInput } from "./types";
+import { randomBytes } from "node:crypto";
+import { SessionBudget } from "./session-budget";
+import type { CheckBudgetOptions, CheckBudgetResult, ClientConfig, CreateSessionConfig, TrackResult, UsageEventBatchInput } from "./types";
 
 let defaultClient: AISpendGuardClient | null = null;
 
@@ -21,6 +23,11 @@ export async function trackUsage(events: UsageEventBatchInput): Promise<TrackRes
 
 export async function checkBudget(options?: CheckBudgetOptions): Promise<CheckBudgetResult> {
   return getClient().checkBudget(options);
+}
+
+export function createSession(config: CreateSessionConfig): SessionBudget {
+  const sessionId = config.sessionId ?? `sess_${randomBytes(6).toString("hex")}`;
+  return new SessionBudget({ ...config, sessionId });
 }
 
 export { AISpendGuardClient };
@@ -54,6 +61,7 @@ export type {
   PriceEntry,
   CheckBudgetOptions,
   CheckBudgetResult,
+  CreateSessionConfig,
   EnforcementAction,
   EnforcementSignal
 } from "./types";

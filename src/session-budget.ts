@@ -24,6 +24,8 @@ export type SessionBudgetInfo = {
 export type SessionBudgetConfig = {
   /** Hard budget limit in USD. Must be > 0. */
   maxBudget: number;
+  /** Optional session identifier. When set, all events get session_id tag auto-injected. */
+  sessionId?: string;
   /** Percentage (1-99) at which soft limit callback fires. Default: 90. */
   softLimitPercent?: number;
   /** Called once when cumulative spend crosses soft limit. */
@@ -52,6 +54,7 @@ export class SessionBudget {
   private hardLimitFired = false;
   private lastTags: { feature?: string; route?: string; traceId?: string } = {};
 
+  private readonly sessionId?: string;
   private readonly maxBudget: number;
   private readonly softLimitPercent: number;
   private readonly onSoftLimit?: (info: SessionBudgetInfo) => void;
@@ -72,6 +75,7 @@ export class SessionBudget {
       throw new Error("softLimitPercent must be between 1 and 99");
     }
 
+    this.sessionId = config.sessionId;
     this.maxBudget = config.maxBudget;
     this.softLimitPercent = config.softLimitPercent ?? 90;
     this.onSoftLimit = config.onSoftLimit;
@@ -88,7 +92,15 @@ export class SessionBudget {
    * Returns `{ ok: false }` if hard limit or loop detected.
    */
   async trackUsage(events: UsageEventBatchInput): Promise<TrackResult> {
-    const list = Array.isArray(events) ? events : [events];
+    const rawList = Array.isArray(events) ? events : [events];
+
+    // Auto-inject session_id tag if configured
+    const list = this.sessionId
+      ? rawList.map((e) => ({
+          ...e,
+          tags: { ...e.tags, session_id: this.sessionId! },
+        }))
+      : rawList;
 
     // Estimate cost for the batch
     let estimatedCost = 0;
@@ -152,8 +164,8 @@ export class SessionBudget {
       this.sendEnforcementEvent("soft_limit").catch(() => {});
     }
 
-    // Forward to SDK client
-    return getClient().trackUsage(events);
+    // Forward to SDK client (use tagged list)
+    return getClient().trackUsage(list.length === 1 ? list[0] : list);
   }
 
   /** Current cumulative spend in this session. */
@@ -219,6 +231,7 @@ export class SessionBudget {
           session_budget_usd: this.maxBudget.toFixed(2),
           session_spend_usd: this.cumulativeSpendUsd.toFixed(2),
           session_call_count: String(this.callCount),
+          ...(this.sessionId ? { session_id: this.sessionId } : {}),
         },
         ...(this.lastTags.traceId ? { traceId: this.lastTags.traceId } : {}),
       });
