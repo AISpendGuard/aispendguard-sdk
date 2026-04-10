@@ -10,7 +10,8 @@ const ALLOWED_TAGS = new Set([
   "environment",
   "agent_name",
   "trace_id",
-  "parent_id"
+  "parent_id",
+  "session_id"
 ]);
 const CUSTOM_TAG_KEY_PATTERN = /^[a-z][a-z0-9_]{1,63}$/;
 const MAX_TAGS_PER_EVENT = 24;

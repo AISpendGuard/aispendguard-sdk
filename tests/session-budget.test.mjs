@@ -287,3 +287,118 @@ test("isExceeded reflects budget state", async () => {
 
   restore();
 });
+
+// ── sessionId auto-tagging tests ────────────────────────────────────────
+
+test("sessionId auto-tags events with session_id", async () => {
+  const { captured, restore } = setupMockClient();
+
+  const budget = new sdk.SessionBudget({
+    maxBudget: 10.00,
+    sessionId: "sess_test123",
+  });
+
+  await budget.trackUsage(makeEvent({}));
+
+  // Filter out enforcement events
+  const userEvents = captured.filter((e) => e.provider !== "aispendguard");
+  assert.ok(userEvents.length >= 1, "should have at least one user event");
+  assert.equal(userEvents[0].tags.session_id, "sess_test123");
+
+  restore();
+});
+
+test("sessionId config overrides event-level session_id tag", async () => {
+  const { captured, restore } = setupMockClient();
+
+  const budget = new sdk.SessionBudget({
+    maxBudget: 10.00,
+    sessionId: "config_set",
+  });
+
+  await budget.trackUsage(makeEvent({
+    tags: { task_type: "chat", feature: "test", route: "POST /test", session_id: "user_set" },
+  }));
+
+  const userEvents = captured.filter((e) => e.provider !== "aispendguard");
+  assert.equal(userEvents[0].tags.session_id, "config_set", "config sessionId should win over event tag");
+
+  restore();
+});
+
+test("no sessionId does not inject session_id tag", async () => {
+  const { captured, restore } = setupMockClient();
+
+  const budget = new sdk.SessionBudget({ maxBudget: 10.00 });
+
+  await budget.trackUsage(makeEvent({}));
+
+  const userEvents = captured.filter((e) => e.provider !== "aispendguard");
+  assert.equal(userEvents[0].tags.session_id, undefined, "should not have session_id tag");
+
+  restore();
+});
+
+test("createSession() factory generates session with auto ID", () => {
+  setupMockClient();
+
+  const session = sdk.createSession({ maxBudget: 5.00 });
+  assert.ok(session instanceof sdk.SessionBudget, "should return a SessionBudget instance");
+
+  // Cannot directly access private sessionId, but we can verify via trackUsage
+  restore_after_createSession: {
+    break restore_after_createSession;
+  }
+});
+
+test("createSession() auto-tags events with generated sess_ prefix", async () => {
+  const { captured, restore } = setupMockClient();
+
+  const session = sdk.createSession({ maxBudget: 5.00 });
+  await session.trackUsage(makeEvent({}));
+
+  const userEvents = captured.filter((e) => e.provider !== "aispendguard");
+  assert.ok(userEvents.length >= 1);
+  assert.ok(
+    typeof userEvents[0].tags.session_id === "string" && userEvents[0].tags.session_id.startsWith("sess_"),
+    `session_id should start with sess_, got: ${userEvents[0].tags.session_id}`
+  );
+  assert.equal(userEvents[0].tags.session_id.length, 17, "sess_ (5) + 12 hex chars = 17");
+
+  restore();
+});
+
+test("createSession() with explicit sessionId uses it", async () => {
+  const { captured, restore } = setupMockClient();
+
+  const session = sdk.createSession({ maxBudget: 5.00, sessionId: "my-run" });
+  await session.trackUsage(makeEvent({}));
+
+  const userEvents = captured.filter((e) => e.provider !== "aispendguard");
+  assert.equal(userEvents[0].tags.session_id, "my-run");
+
+  restore();
+});
+
+test("enforcement events include session_id when sessionId configured", async () => {
+  const { captured, restore } = setupMockClient();
+
+  const budget = new sdk.SessionBudget({
+    maxBudget: 0.001,
+    sessionId: "sess_enforce_test",
+    onHardLimit: () => {},
+  });
+
+  await budget.trackUsage(makeEvent({}));
+
+  // Wait for fire-and-forget enforcement event
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  const enforcement = captured.filter(
+    (e) => e.provider === "aispendguard" && e.model === "session-budget"
+  );
+  assert.ok(enforcement.length >= 1, "enforcement event should be sent");
+  assert.equal(enforcement[0].tags.session_id, "sess_enforce_test");
+
+  restore();
+});
