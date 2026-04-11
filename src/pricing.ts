@@ -1,4 +1,4 @@
-import type { UsageEventInput } from "./types";
+import type { UsageEventInput, CostEstimateInput, CostEstimate } from "./types";
 
 // ---------------------------------------------------------------------------
 // Bundled static pricing table
@@ -202,4 +202,161 @@ export function estimateEventCost(
   const toolCost = webSearches * webSearchFee(provider) + webFetches * 0; // web fetch is free
 
   return tokenCost + toolCost;
+}
+
+// ---------------------------------------------------------------------------
+// API price cache — populated by refreshPricing(), checked by estimateCost()
+// ---------------------------------------------------------------------------
+
+let apiPriceCache: Map<string, PriceEntry> | null = null;
+let apiPriceCacheTimestamp = 0;
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function isCacheFresh(): boolean {
+  return apiPriceCache !== null && Date.now() - apiPriceCacheTimestamp < CACHE_TTL_MS;
+}
+
+/**
+ * Fetch live model pricing from the AISpendGuard API and cache locally.
+ * Call once at startup or periodically — estimateCost() uses cached prices
+ * automatically. Falls back silently to BUNDLED_PRICES if the fetch fails.
+ *
+ * @param endpoint - Base URL of the AISpendGuard app (default: https://www.aispendguard.com)
+ */
+export async function refreshPricing(
+  endpoint = "https://www.aispendguard.com"
+): Promise<{ models: number; source: "api" | "bundled" }> {
+  try {
+    const url = `${endpoint.replace(/\/+$/, "")}/api/public/model-prices`;
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(10_000),
+      headers: { "User-Agent": "AISpendGuard-SDK" },
+    });
+    if (!res.ok) {
+      return { models: BUNDLED_PRICES.size, source: "bundled" };
+    }
+    const json = (await res.json()) as {
+      models?: Array<{
+        provider: string;
+        model: string;
+        inputPricePer1M: number;
+        outputPricePer1M: number;
+      }>;
+    };
+    const cache = new Map<string, PriceEntry>();
+    for (const m of json.models ?? []) {
+      const key = `${m.provider.toLowerCase()}/${m.model}`;
+      cache.set(key, {
+        provider: m.provider,
+        model: m.model,
+        inputPer1MTokens: m.inputPricePer1M,
+        outputPer1MTokens: m.outputPricePer1M,
+      });
+    }
+    apiPriceCache = cache;
+    apiPriceCacheTimestamp = Date.now();
+    return { models: cache.size, source: "api" };
+  } catch {
+    return { models: BUNDLED_PRICES.size, source: "bundled" };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public: estimateCost — simplified convenience wrapper
+// ---------------------------------------------------------------------------
+
+/**
+ * Estimate the cost of an AI API call before making it.
+ *
+ * Uses API-fetched prices (if refreshPricing() was called) with fallback
+ * to bundled prices. Returns null if the model is not found in any source.
+ *
+ * @example
+ * ```typescript
+ * const estimate = estimateCost({
+ *   provider: "openai",
+ *   model: "gpt-4o",
+ *   inputTokens: 1000,
+ *   outputTokens: 500,
+ * });
+ * if (estimate && estimate.estimatedCostUsd > 0.10) {
+ *   console.log("Consider a cheaper model");
+ * }
+ * ```
+ */
+export function estimateCost(
+  params: CostEstimateInput,
+  customPricing?: Map<string, PriceEntry>
+): CostEstimate | null {
+  const provider = params.provider.trim().toLowerCase();
+  const model = params.model.trim();
+  const key = `${provider}/${model}`;
+
+  // Priority: customPricing > API cache > bundled
+  const price =
+    customPricing?.get(key) ??
+    (isCacheFresh() ? apiPriceCache?.get(key) : undefined) ??
+    BUNDLED_PRICES.get(key);
+  if (!price) return null;
+
+  // Delegate to estimateEventCost for accurate total (reuse all multiplier logic)
+  const syntheticEvent: UsageEventInput = {
+    provider: params.provider,
+    model: params.model,
+    inputTokens: params.inputTokens,
+    outputTokens: params.outputTokens,
+    inputTokensCached: params.cachedTokens,
+    inputTokensCacheWrite: params.cacheWriteTokens,
+    cacheTtl: params.cacheTtl,
+    isBatchApi: params.batchMode,
+    isFastMode: params.fastMode,
+    webSearchCount: params.webSearchCount,
+    latencyMs: 0,
+    timestamp: new Date().toISOString(),
+    tags: { task_type: "_estimate", feature: "_estimate", route: "_estimate" },
+  };
+
+  const totalCost = estimateEventCost(syntheticEvent, customPricing);
+  if (totalCost === null) return null;
+
+  // Calculate component costs for the breakdown
+  const cached = params.cachedTokens ?? 0;
+  const cacheWrite = params.cacheWriteTokens ?? 0;
+  const regularInput = Math.max(0, params.inputTokens - cached - cacheWrite);
+
+  let inputCost =
+    (regularInput * price.inputPer1MTokens +
+      cached * price.inputPer1MTokens * cacheReadMultiplier(provider, model) +
+      cacheWrite * price.inputPer1MTokens * cacheWriteMultiplier(provider, params.cacheTtl)) /
+    1_000_000;
+
+  let outputCost = (params.outputTokens * price.outputPer1MTokens) / 1_000_000;
+
+  const longCtx = longContextMultiplier(provider, model, params.inputTokens);
+  if (longCtx) {
+    inputCost *= longCtx.input;
+    outputCost *= longCtx.output;
+  }
+
+  if (params.batchMode) {
+    inputCost *= BATCH_API_MULTIPLIER;
+    outputCost *= BATCH_API_MULTIPLIER;
+  }
+  if (params.fastMode) {
+    inputCost *= FAST_MODE_MULTIPLIER;
+    outputCost *= FAST_MODE_MULTIPLIER;
+  }
+
+  const webSearches = params.webSearchCount ?? 0;
+  const toolCost = webSearches * webSearchFee(provider);
+
+  return {
+    estimatedCostUsd: totalCost,
+    inputCostUsd: inputCost,
+    outputCostUsd: outputCost,
+    toolCostUsd: toolCost,
+    model: key,
+    pricePerInputToken: price.inputPer1MTokens,
+    pricePerOutputToken: price.outputPer1MTokens,
+  };
 }

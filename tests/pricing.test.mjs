@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { estimateEventCost, BUNDLED_PRICES } = require("../dist/pricing.js");
+const { estimateEventCost, estimateCost, BUNDLED_PRICES } = require("../dist/pricing.js");
 
 function makeEvent(overrides) {
   return {
@@ -185,4 +185,98 @@ test("Google Flash models exempt from long-context surcharge", () => {
   }));
   assert.ok(cost !== null);
   assert.ok(Math.abs(cost - 0.07625) < 0.001);
+});
+
+// ── estimateCost() tests ─────────────────────────────────────────────────
+
+test("estimateCost returns structured breakdown for known model", () => {
+  const result = estimateCost({
+    provider: "openai",
+    model: "gpt-4o",
+    inputTokens: 1000,
+    outputTokens: 500,
+  });
+  assert.ok(result !== null);
+  assert.equal(typeof result.estimatedCostUsd, "number");
+  assert.equal(typeof result.inputCostUsd, "number");
+  assert.equal(typeof result.outputCostUsd, "number");
+  assert.equal(typeof result.toolCostUsd, "number");
+  assert.equal(result.model, "openai/gpt-4o");
+  assert.equal(result.pricePerInputToken, 2.50);
+  assert.equal(result.pricePerOutputToken, 10.00);
+  // Total should match estimateEventCost
+  assert.ok(Math.abs(result.estimatedCostUsd - 0.0075) < 0.000001);
+  // Input: 1000 * 2.50 / 1M = 0.0025
+  assert.ok(Math.abs(result.inputCostUsd - 0.0025) < 0.000001);
+  // Output: 500 * 10.00 / 1M = 0.005
+  assert.ok(Math.abs(result.outputCostUsd - 0.005) < 0.000001);
+  // No tool costs
+  assert.equal(result.toolCostUsd, 0);
+});
+
+test("estimateCost returns null for unknown model", () => {
+  const result = estimateCost({
+    provider: "unknown",
+    model: "nonexistent",
+    inputTokens: 1000,
+    outputTokens: 500,
+  });
+  assert.equal(result, null);
+});
+
+test("estimateCost handles batch mode in breakdown", () => {
+  const result = estimateCost({
+    provider: "openai",
+    model: "gpt-4o",
+    inputTokens: 1000,
+    outputTokens: 500,
+    batchMode: true,
+  });
+  assert.ok(result !== null);
+  assert.ok(Math.abs(result.estimatedCostUsd - 0.00375) < 0.000001);
+  // Input with batch: 0.0025 * 0.5 = 0.00125
+  assert.ok(Math.abs(result.inputCostUsd - 0.00125) < 0.000001);
+});
+
+test("estimateCost handles cached tokens in breakdown", () => {
+  const result = estimateCost({
+    provider: "openai",
+    model: "gpt-4o",
+    inputTokens: 1000,
+    outputTokens: 500,
+    cachedTokens: 200,
+  });
+  assert.ok(result !== null);
+  // Same as estimateEventCost with inputTokensCached: 200
+  assert.ok(Math.abs(result.estimatedCostUsd - 0.00725) < 0.000001);
+});
+
+test("estimateCost accepts custom pricing", () => {
+  const custom = new Map([
+    ["openai/gpt-4o", { provider: "openai", model: "gpt-4o", inputPer1MTokens: 5.00, outputPer1MTokens: 20.00 }],
+  ]);
+  const result = estimateCost(
+    { provider: "openai", model: "gpt-4o", inputTokens: 1000, outputTokens: 500 },
+    custom,
+  );
+  assert.ok(result !== null);
+  assert.ok(Math.abs(result.estimatedCostUsd - 0.015) < 0.000001);
+  assert.equal(result.pricePerInputToken, 5.00);
+});
+
+test("estimateCost with web search includes flat fee in toolCostUsd", () => {
+  const result = estimateCost({
+    provider: "openai",
+    model: "gpt-4o",
+    inputTokens: 1000,
+    outputTokens: 500,
+    webSearchCount: 2,
+  });
+  assert.ok(result !== null);
+  // 0.0075 + 2 * 0.01 = 0.0275
+  assert.ok(Math.abs(result.estimatedCostUsd - 0.0275) < 0.000001);
+  // toolCostUsd should be 2 * 0.01 = 0.02
+  assert.ok(Math.abs(result.toolCostUsd - 0.02) < 0.000001);
+  // input + output + tool should equal total
+  assert.ok(Math.abs(result.inputCostUsd + result.outputCostUsd + result.toolCostUsd - result.estimatedCostUsd) < 0.000001);
 });

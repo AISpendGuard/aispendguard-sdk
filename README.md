@@ -190,9 +190,30 @@ await trackUsage(event);
 
 > **Key point:** OpenAI requires `stream_options: { include_usage: true }` — without it, usage is `null` in the stream. Anthropic provides usage on the final message automatically.
 
+## Pre-request cost estimation
+```ts
+import { estimateCost, refreshPricing } from "@aispendguard/sdk";
+
+// Optional: fetch live prices (24h cache)
+await refreshPricing();
+
+const estimate = estimateCost({
+  provider: "openai",
+  model: "gpt-4o",
+  inputTokens: 2000,
+  outputTokens: 500,
+});
+
+if (estimate && estimate.estimatedCostUsd > 0.10) {
+  console.log("Consider a cheaper model");
+}
+```
+
 ## API
 - `init(config)`
 - `trackUsage(event | event[])`
+- `estimateCost(params, customPricing?)` — synchronous pre-request cost estimate with structured breakdown
+- `refreshPricing(endpoint?)` — fetch live model prices (24h cache, falls back to bundled)
 - `createOpenAIUsageEvent(params)` — OpenAI Chat Completions + Responses API
 - `createAnthropicUsageEvent(params)` — Anthropic Messages API
 - `createGeminiUsageEvent(params)` — Google Gemini generateContent API
