@@ -177,5 +177,43 @@ export type VercelAIConfig = {
   provider?: string;
 };
 
+/** Input for the simplified cost estimation function. */
+export type CostEstimateInput = {
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  /** Cached input tokens (billed at reduced rate). */
+  cachedTokens?: number;
+  /** Cache write tokens (Anthropic: 1.25×/2.0× premium). */
+  cacheWriteTokens?: number;
+  /** Anthropic cache TTL: "5m" (default) or "1h" (extended). */
+  cacheTtl?: "5m" | "1h";
+  /** Whether this will use the Batch API (50% discount). */
+  batchMode?: boolean;
+  /** Whether fast mode is used (6× multiplier). */
+  fastMode?: boolean;
+  /** Number of web search calls (flat fee per call). */
+  webSearchCount?: number;
+};
+
+/** Structured cost breakdown returned by estimateCost(). */
+export type CostEstimate = {
+  /** Total estimated cost in USD. */
+  estimatedCostUsd: number;
+  /** Cost attributed to input tokens. */
+  inputCostUsd: number;
+  /** Cost attributed to output tokens. */
+  outputCostUsd: number;
+  /** Cost attributed to tool calls (web search fees). */
+  toolCostUsd: number;
+  /** Normalized model identifier used for lookup. */
+  model: string;
+  /** Price per 1M input tokens (from pricing source). */
+  pricePerInputToken: number;
+  /** Price per 1M output tokens (from pricing source). */
+  pricePerOutputToken: number;
+};
+
 export type { SessionBudgetConfig, SessionBudgetInfo, LoopDetectionConfig } from "./session-budget";
 export type { PriceEntry } from "./pricing";

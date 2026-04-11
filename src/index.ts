@@ -25,7 +25,7 @@ export async function checkBudget(options?: CheckBudgetOptions): Promise<CheckBu
 
 export { AISpendGuardClient };
 export { SessionBudget } from "./session-budget";
-export { estimateEventCost } from "./pricing";
+export { estimateEventCost, estimateCost, refreshPricing } from "./pricing";
 export { createOpenAIUsageEvent } from "./openai";
 export { createAnthropicUsageEvent } from "./anthropic";
 export { createGeminiUsageEvent } from "./gemini";
@@ -58,5 +58,7 @@ export type {
   EnforcementAction,
   EnforcementSignal,
   VercelAIOnFinishResult,
-  VercelAIConfig
+  VercelAIConfig,
+  CostEstimate,
+  CostEstimateInput
 } from "./types";
