@@ -122,3 +122,55 @@ test("no forbidden keys in returned config", () => {
     assert.ok(!serialized.includes(`"${key}"`), `Config should not contain forbidden key: ${key}`);
   }
 });
+
+// ── Edge cases ──────────────────────────────────────────────────────────────
+
+test("empty defaultTags object produces only source tag", () => {
+  const result = createMastraExporter({
+    apiKey: "asg_test",
+    defaultTags: {},
+  });
+  const attrKeys = Object.keys(result.resource.attributes);
+  assert.equal(attrKeys.length, 1);
+  assert.equal(result.resource.attributes["aispendguard.tag.source"], "mastra");
+});
+
+test("20 custom tags all mapped with aispendguard.tag prefix", () => {
+  const tags = {};
+  for (let i = 0; i < 20; i++) tags[`custom_tag_${i}`] = `value_${i}`;
+  const result = createMastraExporter({ apiKey: "asg_test", defaultTags: tags });
+  // 20 custom + 1 auto source = 21
+  assert.equal(Object.keys(result.resource.attributes).length, 21);
+  assert.equal(result.resource.attributes["aispendguard.tag.custom_tag_0"], "value_0");
+  assert.equal(result.resource.attributes["aispendguard.tag.custom_tag_19"], "value_19");
+});
+
+test("tag values preserved exactly without transformation", () => {
+  const result = createMastraExporter({
+    apiKey: "asg_test",
+    defaultTags: { feature: "  MyFeature  ", route: "/API/Chat" },
+  });
+  assert.equal(result.resource.attributes["aispendguard.tag.feature"], "  MyFeature  ");
+  assert.equal(result.resource.attributes["aispendguard.tag.route"], "/API/Chat");
+});
+
+test("all optional fields specified returns complete config", () => {
+  const result = createMastraExporter({
+    apiKey: "asg_full",
+    endpoint: "https://custom.example.com/otlp",
+    serviceName: "my-agent",
+    defaultTags: { task_type: "agent_step", feature: "support", route: "/chat", source: "my-app" },
+  });
+  assert.equal(result.serviceName, "my-agent");
+  assert.equal(result.export.endpoint, "https://custom.example.com/otlp");
+  assert.equal(result.export.headers["x-api-key"], "asg_full");
+  assert.equal(result.resource.attributes["aispendguard.tag.source"], "my-app");
+  assert.equal(result.resource.attributes["aispendguard.tag.task_type"], "agent_step");
+});
+
+test("undefined defaultTags produces only source tag", () => {
+  const result = createMastraExporter({ apiKey: "asg_test" });
+  const attrKeys = Object.keys(result.resource.attributes);
+  assert.equal(attrKeys.length, 1);
+  assert.equal(result.resource.attributes["aispendguard.tag.source"], "mastra");
+});
