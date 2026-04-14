@@ -33,7 +33,11 @@ export { AISpendGuardCallbackHandler } from "./langchain";
 export { wrapOpenAI } from "./wrap-openai";
 export { wrapAnthropic } from "./wrap-anthropic";
 export { wrapGemini } from "./wrap-gemini";
+
 export { createAISDKOnFinish, createVercelAIUsageEvent } from "./vercel-ai";
+
+export { createMastraExporter } from "./mastra";
+export type { MastraExporterConfig } from "./mastra";
 export type { LangChainHandlerConfig } from "./langchain";
 export type { AnthropicEventParams } from "./anthropic";
 export type { OpenAIEventParams } from "./openai";

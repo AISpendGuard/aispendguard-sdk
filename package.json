@@ -5,6 +5,16 @@
   "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./mastra": {
+      "types": "./dist/mastra.d.ts",
+      "default": "./dist/mastra.js"
+    }
+  },
   "files": [
     "dist",
     "LICENSE",
@@ -20,6 +30,7 @@
     "anthropic",
     "gemini",
     "langchain",
+    "mastra",
     "observability"
   ],
   "repository": {
@@ -41,6 +52,14 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test tests/*.test.mjs",
     "prepublishOnly": "npm run test"
+  },
+  "peerDependencies": {
+    "@mastra/core": ">=0.5.0"
+  },
+  "peerDependenciesMeta": {
+    "@mastra/core": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
